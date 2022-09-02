@@ -9,7 +9,9 @@ app = FastAPI()
 
 def get_required_environment_variable(name: str, default: Optional[str] = None) -> str:
     value = os.getenv(name, default)
-    assert value is not None, f'{name} environment variable must be defined.'
+    if default is not None and value == '':
+        value = default
+    assert value is not None and value != '', f'{name} environment variable must be defined.'
     return value
 
 APP_NAME = get_required_environment_variable('APP_NAME')
