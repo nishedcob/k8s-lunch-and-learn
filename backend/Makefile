@@ -23,6 +23,14 @@ install_dependencies: $(VIRTUAL_ENV)/bin/pip-sync requirements.txt
 run_app: install_dependencies
 	APP_NAME='hydrogen' KUBERNETES_NAMESPACE='default' env/bin/uvicorn app:app --reload
 
+local_integration_test:
+	curl localhost:8000/v1/health
+	@echo ''
+	curl localhost:8000/v1/access/hydrogen/v1/health
+	@echo ''
+	curl localhost:8000/v1/access/helium/v1/health
+	@echo ''
+
 build_app: Dockerfile app.py requirements.txt
 	docker build -t $(DOCKER_IMAGE_NAME) .
 
@@ -56,7 +64,7 @@ docker_app_shell: COMMAND='/bin/sh'
 docker_app_shell: docker_app_should_be_running
 	docker exec -it $(DOCKER_APP_ID) $(COMMAND)
 
-docker_app_integration_tests: COMMAND="apk add curl ; echo '' ; curl localhost/v1/health ; echo '' ; curl localhost/access/hydrogen/v1/health ; echo '' ; curl localhost/access/helium/v1/health ; echo ''"
+docker_app_integration_tests: COMMAND="apk add curl ; echo '' ; curl localhost/v1/health ; echo '' ; curl localhost/v1/access/hydrogen/v1/health ; echo '' ; curl localhost/v1/access/helium/v1/health ; echo ''"
 docker_app_integration_tests: docker_app_should_be_running
 	$(MAKE) docker_app_shell COMMAND=$(COMMAND)
 

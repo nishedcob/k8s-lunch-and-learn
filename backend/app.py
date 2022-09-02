@@ -30,7 +30,7 @@ def health_check():
         'call': 'GET /v1/health'
     }
 
-@app.get('/access/{service}/{api_version}/{endpoint}')
+@app.get('/v1/access/{service}/{api_version}/{endpoint}')
 def access(service: str, api_version: str, endpoint: str, response: Response):
     if service == APP_NAME and not ALL_REQUESTS_K8S_DNS:
         host = f'{INTERNAL_PROTOCOL}://localhost:{PORT}'
