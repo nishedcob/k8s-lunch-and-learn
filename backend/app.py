@@ -17,6 +17,8 @@ CLUSTER_DOMAIN = get_required_environment_variable('CLUSTER_DOMAIN', 'cluster.lo
 PROTOCOL = get_required_environment_variable('PROTOCOL', 'http')
 INTERNAL_PROTOCOL = get_required_environment_variable('INTERNAL_PROTOCOL', PROTOCOL)
 EXTERNAL_PROTOCOL = get_required_environment_variable('EXTERNAL_PROTOCOL', PROTOCOL)
+PORT = get_required_environment_variable('PORT', '8000')
+ALL_REQUESTS_K8S_DNS = get_required_environment_variable('ALL_REQUESTS_K8S_DNS', 'FALSE') == 'TRUE'
 
 @app.get('/v1/health')
 def health_check():
@@ -27,8 +29,8 @@ def health_check():
 
 @app.get('/access/{service}/{api_version}/{endpoint}')
 def access(service: str, api_version: str, endpoint: str, response: Response):
-    if service == APP_NAME:
-        host = f'{INTERNAL_PROTOCOL}://localhost:8000'
+    if service == APP_NAME and not ALL_REQUESTS_K8S_DNS:
+        host = f'{INTERNAL_PROTOCOL}://localhost:{PORT}'
     else:
         host = f'{EXTERNAL_PROTOCOL}://{service}.{KUBERNETES_NAMESPACE}.svc.{CLUSTER_DOMAIN}'
     req = requests.get(f'{host}/{api_version}/{endpoint}')
