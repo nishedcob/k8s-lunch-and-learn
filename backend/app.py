@@ -3,6 +3,7 @@ import os
 from fastapi import FastAPI, Response
 from typing import Optional
 import requests
+from requests.exceptions import ConnectionError
 
 app = FastAPI()
 
@@ -33,8 +34,20 @@ def access(service: str, api_version: str, endpoint: str, response: Response):
         host = f'{INTERNAL_PROTOCOL}://localhost:{PORT}'
     else:
         host = f'{EXTERNAL_PROTOCOL}://{service}.{KUBERNETES_NAMESPACE}.svc.{CLUSTER_DOMAIN}'
-    req = requests.get(f'{host}/{api_version}/{endpoint}')
-    response.status_code = req.status_code
+    try:
+        req = requests.get(f'{host}/{api_version}/{endpoint}')
+        upstream = {
+            'status_code': req.status_code,
+            'body': req.json()
+        }
+    except ConnectionError:
+        upstream = {
+            'status_code': 404,
+            'body': {
+                'error_msg': f'Failed to connect to upstream host: {host}'
+            }
+        }
+    response.status_code = upstream.get('status_code', 500)
     return {
         'app': APP_NAME,
         'hostname': host,
@@ -44,8 +57,5 @@ def access(service: str, api_version: str, endpoint: str, response: Response):
             'api_version': api_version,
             'endpoint': endpoint
         },
-        'response': {
-            'status_code': req.status_code,
-            'body': req.json()
-        }
+        'response': upstream
     }
