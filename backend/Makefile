@@ -26,4 +26,4 @@ build_app: Dockerfile app.py requirements.txt
 	docker build -t $(DOCKER_IMAGE_NAME) .
 
 run_docker_app: build_app
-	docker run --rm $(DOCKER_IMAGE_NAME)
+	docker run -e APP_NAME='hydrogen' -e KUBERNETES_NAMESPACE='default' --rm $(DOCKER_IMAGE_NAME)
