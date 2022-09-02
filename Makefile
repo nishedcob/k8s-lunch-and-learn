@@ -1,4 +1,9 @@
 
+## help | show this help command
+help: Makefile
+	@sed -n 's/^## //p' $< | column -ts '|'
+
+## minikube | ensure minikube is installed in PATH
 minikube:
 	@if [ -z "$$(which $@)" ] ; then \
 		if [ ! -z "$$(which brew)" ] ; then \
@@ -32,6 +37,7 @@ minikube:
 		echo "$@ has already been installed and found in your PATH." ; \
 	fi
 
+## kubectl | ensure kubectl is installed in PATH
 kubectl:
 	@if [ -z "$$(which $@)" ] ; then \
 		if [ ! -z "$$(which brew)" ] ; then \
@@ -53,16 +59,21 @@ kubectl:
 		echo "$@ has already been installed and found in your PATH." ; \
 	fi
 
+## start_minikube | create or start a local minikube cluster if one is not already running
 start_minikube: minikube kubectl
 	$< status || ($< start && $< status)
 
+## status_minikube | check the status of the local minikube cluster if one exists
 status_minikube: minikube
 	$< status
 
+## stop_minikube | stop running the local minikube cluster without losing the state of what workloads it should run
 stop_minikube: minikube
 	$< stop
 
+## delete_minikube | stop and destroy the local minikube cluster and lose its state as to what workloads to run
 delete_minikube: minikube
 	$< delete
 
+## destroy_minikube | alias for delete_minikube
 destroy_minikube: delete_minikube
