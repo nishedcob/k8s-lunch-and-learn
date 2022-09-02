@@ -77,3 +77,43 @@ delete_minikube: minikube
 
 ## destroy_minikube | alias for delete_minikube
 destroy_minikube: delete_minikube
+
+## istioctl | ensure istioctl is installed in PATH
+istioctl:
+	@if [ -z "$$(which $@)" ] ; then \
+		if [ ! -z "$$(which brew)" ] ; then \
+			brew install $@ ; \
+		elif [ "$$(uname)" = "Darwin" ]; then \
+			echo "Please install brew before proceeding." ; \
+			exit 1 ; \
+		elif [ "$$(uname)" = "Linux" ] ; then \
+			if [ -z "$$(which curl)" ] || [ -z "$$(which sudo)" ] || [ -z "$$(which install)" ] ; then \
+				if [ -z "$$(which curl)" ] ; then \
+					echo "Please install curl before proceeding." ; \
+				fi ; \
+				if [ -z "$$(which sudo)" ] ; then \
+					echo "Please install sudo before proceeding." ; \
+				fi ; \
+				if [ -z "$$(which install)" ] ; then \
+					echo "Please install `install` before proceeding." ; \
+				fi ; \
+				exit 1 ; \
+			fi ; \
+			curl -L https://istio.io/downloadIstio | sh - ; \
+			cd istio-* ; \
+			sudo install bin/istioctl /usr/local/bin/istioctl ; \
+		else \
+			echo "Your automatic install on your OS is not supported yet. Please install $@ manually before proceeding." ; \
+			exit 1 ; \
+		fi ; \
+	else \
+		echo "$@ has already been installed and found in your PATH." ; \
+	fi
+
+## install_istio | Install Istio in the Minikube Cluster
+install_istio: istioctl kubectl start_minikube
+	$< install -y
+
+## install_istio_addons | Install recommended Istio Addons in the Minikube Cluster
+install_istio_addons: kubectl install_istio
+	$< apply -f istio_addons/
