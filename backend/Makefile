@@ -17,3 +17,6 @@ requirements.txt: $(VIRTUAL_ENV)/bin/pip-compile requirements.in
 
 install_dependencies: $(VIRTUAL_ENV)/bin/pip-sync requirements.txt
 	$^
+
+run_app: install_dependencies
+	APP_NAME='hydrogen' KUBERNETES_NAMESPACE='default' env/bin/uvicorn app:app --reload
