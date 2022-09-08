@@ -117,3 +117,15 @@ install_istio: istioctl kubectl start_minikube
 ## install_istio_addons | Install recommended Istio Addons in the Minikube Cluster
 install_istio_addons: kubectl install_istio
 	$< apply -f istio_addons/
+
+## install_registry | Install Docker Registry in Minikube Cluster
+install_registry: kubectl start_minikube
+	$< apply -f k8s/registry/registry.yaml
+	@echo "Waiting for the registry to be ready..."
+	@while ! ($< get deploy/registry -n registry -o json | jq '.status.readyReplicas == 1' | grep -q '^true$$') ; do \
+		echo '$< get deploy/registry -n registry' ; \
+		$< get deploy/registry -n registry ; \
+		sleep 1 ; \
+	done
+	$< get deploy/registry -n registry
+	@echo "The registry is ready."
