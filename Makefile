@@ -112,7 +112,7 @@ istioctl:
 
 ## install_istio | Install Istio in the Minikube Cluster
 install_istio: istioctl kubectl start_minikube
-	$< install -y
+	$< install -yf k8s/istio/install-overrides.yaml
 
 ## install_istio_addons | Install recommended Istio Addons in the Minikube Cluster
 install_istio_addons: kubectl install_istio
