@@ -115,8 +115,12 @@ istioctl:
 		echo "$@ has already been installed and found in your PATH." ; \
 	fi
 
+## k8s/istio/install-overrides.yaml | Build k8s/istio/install-overrides.yaml for the current machine architecture
+k8s/istio/install-overrides.yaml:
+	cd k8s/istio ; $(MAKE) $$(basename $@)
+
 ## install_istio | Install Istio in the Minikube Cluster
-install_istio: istioctl kubectl start_minikube
+install_istio: istioctl kubectl start_minikube k8s/istio/install-overrides.yaml
 	$< install -yf k8s/istio/install-overrides.yaml
 
 ## install_istio_addons | Install recommended Istio Addons in the Minikube Cluster
