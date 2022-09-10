@@ -142,3 +142,7 @@ install_registry: kubectl start_minikube
 ## install_registry_ingress | Install Istio Ingress Configuration for Registry in the Minikube Cluster
 install_registry_ingress: kubectl install_istio install_registry
 	$< apply -f k8s/registry/registry-istio-ingress.yaml
+
+## minikube_tunnel | Forward localhost ports to minikube ingress ports, requires sudo and its own terminal
+minikube_tunnel: minikube start_minikube
+	$< tunnel
