@@ -189,9 +189,17 @@ istio_injection_label:
 		kubectl label namespace default istio-injection=enabled ; \
 	fi
 
+minikube_registry_dns_setup: REGISTRY_IP=$$(kubectl get svc/registry -n $(REGISTRY_NAMESPACE) -o json | jq -r '.spec.clusterIP')
+minikube_registry_dns_setup: minikube #install_registry
+	$< ssh "sudo touch /etc/hosts"
+	$< ssh "grep -q '$(DOCKER_REGISTRY_HOST)' /etc/hosts" \
+		|| $< ssh "echo $(REGISTRY_IP)' $(DOCKER_REGISTRY_HOST)' | sudo tee -a /etc/hosts"
+	# REGISTRY_IP=$(REGISTRY_IP) \
+	# 	$< ssh "sudo sed 's/.*$(DOCKER_REGISTRY_HOST).*/$$REGISTRY_IP $(DOCKER_REGISTRY_HOST)/' -i /etc/hosts"
+
 #backend_apply: istio_injection_label docker_push_backend
 backend_apply: BACKEND_SERVICE=''
-backend_apply: docker_push_backend
+backend_apply: docker_push_backend minikube_registry_dns_setup
 	if [ '$(BACKEND_SERVICE)' != '' ] ; then \
 		kubectl apply -k k8s/backend/$(BACKEND_SERVICE) ; \
 	else \
@@ -199,7 +207,7 @@ backend_apply: docker_push_backend
 	fi
 
 #apply_all_backends: istio_injection_label docker_push_backend
-apply_all_backends: docker_push_backend
+apply_all_backends: docker_push_backend minikube_registry_dns_setup
 	for BACKEND in 'hydrogen' 'helium' 'oxygen' 'sodium' 'chlorine' ; do \
 		$(MAKE) backend_apply BACKEND_SERVICE=$$BACKEND ; \
 	done
