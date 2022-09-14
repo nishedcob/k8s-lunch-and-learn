@@ -1,5 +1,6 @@
 
-DOCKER_REGISTRY_HOST=registry.default.svc.cluster.local
+REGISTRY_NAMESPACE=default
+DOCKER_REGISTRY_HOST=registry.$(REGISTRY_NAMESPACE).svc.cluster.local
 DOCKER_IMAGE_NAME=istio_demo_backend
 DOCKER_REGISTRY_NAME=backend:latest
 
@@ -135,12 +136,12 @@ install_istio_addons: kubectl install_istio
 install_registry: kubectl start_minikube
 	$< apply -f k8s/registry/registry.yaml
 	@echo "Waiting for the registry to be ready..."
-	@while ! ($< get deploy/registry -o json | jq '.status.readyReplicas == 1' | grep -q '^true$$') ; do \
-		echo '$< get deploy/registry ' ; \
-		$< get deploy/registry  ; \
+	@while ! ($< get deploy/registry -n $(REGISTRY_NAMESPACE) -o json | jq '.status.readyReplicas == 1' | grep -q '^true$$') ; do \
+		echo '$< get deploy/registry -n $(REGISTRY_NAMESPACE)' ; \
+		$< get deploy/registry -n $(REGISTRY_NAMESPACE); \
 		sleep 1 ; \
 	done
-	$< get deploy/registry 
+	$< get deploy/registry -n $(REGISTRY_NAMESPACE)
 	@echo "The registry is ready."
 
 ## install_registry_ingress | Install Istio Ingress Configuration for Registry in the Minikube Cluster
@@ -173,7 +174,7 @@ docker_push_backend: root_configuration
 		echo 'Please stop any applications that are listening to port 80'; \
 		exit 1 ; \
 	fi
-	sudo /root/kubectl port-forward svc/registry 80:80 &
+	sudo /root/kubectl port-forward -n $(REGISTRY_NAMESPACE) svc/registry 80:80 &
 	@sleep 5
 	docker push $(DOCKER_REGISTRY_HOST)/$(DOCKER_REGISTRY_NAME)
 	sudo kill $$(sudo pgrep kubectl)
