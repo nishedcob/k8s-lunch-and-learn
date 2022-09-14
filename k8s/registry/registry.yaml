@@ -1,18 +1,16 @@
-
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: registry
-  labels:
-    istio-injection: enabled
+#0apiVersion: v1
+#kind: Namespace
+#metadata:
+#name: registry
+#labels:
+#  istio-injection: enabled
 
 ---
-
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: registry
-  namespace: registry
+  #namespace: registry
 spec:
   selector:
     matchLabels:
@@ -24,18 +22,17 @@ spec:
         app: registry
     spec:
       containers:
-      - name: registry
-        image: registry:2.8
-        ports:
-        - containerPort: 5000
+        - name: registry
+          image: registry:2.8
+          ports:
+            - containerPort: 5000
 
 ---
-
 apiVersion: v1
 kind: Service
 metadata:
   name: registry
-  namespace: registry
+  #namespace: registry
 spec:
   selector:
     app: registry

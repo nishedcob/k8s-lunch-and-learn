@@ -1,4 +1,8 @@
 
+DOCKER_REGISTRY_HOST=registry.default.svc.cluster.local
+DOCKER_IMAGE_NAME=istio_demo_backend
+DOCKER_REGISTRY_NAME=backend:latest
+
 default: help
 
 include dependencies.mk
@@ -131,12 +135,12 @@ install_istio_addons: kubectl install_istio
 install_registry: kubectl start_minikube
 	$< apply -f k8s/registry/registry.yaml
 	@echo "Waiting for the registry to be ready..."
-	@while ! ($< get deploy/registry -n registry -o json | jq '.status.readyReplicas == 1' | grep -q '^true$$') ; do \
-		echo '$< get deploy/registry -n registry' ; \
-		$< get deploy/registry -n registry ; \
+	@while ! ($< get deploy/registry -o json | jq '.status.readyReplicas == 1' | grep -q '^true$$') ; do \
+		echo '$< get deploy/registry ' ; \
+		$< get deploy/registry  ; \
 		sleep 1 ; \
 	done
-	$< get deploy/registry -n registry
+	$< get deploy/registry 
 	@echo "The registry is ready."
 
 ## install_registry_ingress | Install Istio Ingress Configuration for Registry in the Minikube Cluster
@@ -146,3 +150,50 @@ install_registry_ingress: kubectl install_istio install_registry
 ## minikube_tunnel | Forward localhost ports to minikube ingress ports, requires sudo and its own terminal
 minikube_tunnel: minikube start_minikube
 	$< tunnel
+
+#build_backend_image: install_registry_ingress
+build_backend_image: install_registry
+	cd backend; $(MAKE) build_app
+
+create_docker_tag: build_backend_image
+	docker tag $(DOCKER_IMAGE_NAME):latest $(DOCKER_REGISTRY_HOST)/$(DOCKER_REGISTRY_NAME)
+
+root_configuration: create_docker_tag
+	sudo mkdir -pv /root/.kube/ 
+	sudo cp $$HOME/.kube/config /root/.kube/
+	sudo cp $$(which kubectl) /tmp/kubectl
+	sudo cp /tmp/kubectl /root/kubectl
+	sudo chmod +x /root/kubectl
+	sudo touch /etc/hosts
+	grep -q '$(DOCKER_REGISTRY_HOST)' /etc/hosts || echo '127.0.0.1 $(DOCKER_REGISTRY_HOST)' | sudo tee -a /etc/hosts
+	sudo sed 's/.*$(DOCKER_REGISTRY_HOST).*/127.0.0.1 $(DOCKER_REGISTRY_HOST)/' -i /etc/hosts
+
+docker_push_backend: root_configuration
+	@if sudo netstat -tupln | grep -q ':80 ' ; then \
+		echo 'Please stop any applications that are listening to port 80'; \
+		exit 1 ; \
+	fi
+	sudo /root/kubectl port-forward svc/registry 80:80 &
+	@sleep 5
+	docker push $(DOCKER_REGISTRY_HOST)/$(DOCKER_REGISTRY_NAME)
+	sudo kill $$(sudo pgrep kubectl)
+
+istio_injection_label: 
+	@if !(kubectl get ns default -o json | jq '.metadata.labels."istio-injection"=="enabled"' | grep -q '^true$$') ; then \
+		kubectl label namespace default istio-injection=enabled ; \
+	fi
+
+#backend_apply: istio_injection_label docker_push_backend
+backend_apply: BACKEND_SERVICE=''
+backend_apply: docker_push_backend
+	if [ '$(BACKEND_SERVICE)' != '' ] ; then \
+		kubectl apply -k k8s/backend/$(BACKEND_SERVICE) ; \
+	else \
+		echo "BACKEND_SERVICE arg is empty please specify the backend service" ; \
+	fi
+
+#apply_all_backends: istio_injection_label docker_push_backend
+apply_all_backends: docker_push_backend
+	for BACKEND in 'hydrogen' 'helium' 'oxygen' 'sodium' 'chlorine' ; do \
+		$(MAKE) backend_apply BACKEND_SERVICE=$$BACKEND ; \
+	done
