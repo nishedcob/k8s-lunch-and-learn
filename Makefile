@@ -160,21 +160,26 @@ create_docker_tag: build_backend_image
 	docker tag $(DOCKER_IMAGE_NAME):latest $(DOCKER_REGISTRY_HOST)/$(DOCKER_REGISTRY_NAME)
 
 root_configuration: create_docker_tag
-	sudo mkdir -pv /root/.kube/ 
-	sudo cp $$HOME/.kube/config /root/.kube/
-	sudo cp $$(which kubectl) /tmp/kubectl
-	sudo cp /tmp/kubectl /root/kubectl
-	sudo chmod +x /root/kubectl
+	@if [ "$(uname -s)" = 'Linux' ] ; then \
+		sudo mkdir -pv /root/.kube/ ; \
+		sudo cp -v $$HOME/.kube/config /root/.kube/ ; \
+		sudo cp -v $$(which kubectl) /tmp/kubectl ; \
+		sudo cp -v /tmp/kubectl /root/kubectl ; \
+		sudo chmod -v +x /root/kubectl ; \
+	fi
 	sudo touch /etc/hosts
 	grep -q '$(DOCKER_REGISTRY_HOST)' /etc/hosts || echo '127.0.0.1 $(DOCKER_REGISTRY_HOST)' | sudo tee -a /etc/hosts
-	sudo sed 's/.*$(DOCKER_REGISTRY_HOST).*/127.0.0.1 $(DOCKER_REGISTRY_HOST)/' -i /etc/hosts
+	@if [ "$$(uname -s)" = 'Darwin' ] ; then \
+		$(MAKE) gsed ; \
+	fi
+	sudo $(if $(filter $(shell uname -s),Darwin),g,)sed 's/.*$(DOCKER_REGISTRY_HOST).*/127.0.0.1 $(DOCKER_REGISTRY_HOST)/' -i /etc/hosts
 
 docker_push_backend: root_configuration
 	@if sudo netstat -tupln | grep -q ':80 ' ; then \
 		echo 'Please stop any applications that are listening to port 80'; \
 		exit 1 ; \
 	fi
-	sudo /root/kubectl port-forward -n $(REGISTRY_NAMESPACE) svc/registry 80:80 &
+	sudo $(if $(filter $(shell uname -s),Linux),/root/,)kubectl port-forward -n $(REGISTRY_NAMESPACE) svc/registry 80:80 &
 	@sleep 5
 	docker push $(DOCKER_REGISTRY_HOST)/$(DOCKER_REGISTRY_NAME)
 	sudo kill $$(sudo pgrep kubectl)
