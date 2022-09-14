@@ -1,6 +1,6 @@
 
 REGISTRY_NAMESPACE=default
-DOCKER_REGISTRY_HOST=registry.$(REGISTRY_NAMESPACE).svc.cluster.local
+DOCKER_REGISTRY_HOST=localhost
 DOCKER_IMAGE_NAME=istio_demo_backend
 DOCKER_REGISTRY_NAME=backend:latest
 
@@ -157,7 +157,7 @@ build_backend_image: install_registry
 	cd backend; $(MAKE) build_app
 
 create_docker_tag: build_backend_image
-	docker tag $(DOCKER_IMAGE_NAME):latest $(DOCKER_REGISTRY_HOST)/$(DOCKER_REGISTRY_NAME)
+	docker tag $(DOCKER_IMAGE_NAME):latest $(DOCKER_REGISTRY_HOST):5000/$(DOCKER_REGISTRY_NAME)
 
 root_configuration: create_docker_tag
 	@if [ "$(uname -s)" = 'Linux' ] ; then \
@@ -179,9 +179,9 @@ docker_push_backend: root_configuration
 		echo 'Please stop any applications that are listening to port 80'; \
 		exit 1 ; \
 	fi
-	sudo $(if $(filter $(shell uname -s),Linux),/root/,)kubectl port-forward -n $(REGISTRY_NAMESPACE) svc/registry 80:80 &
+	sudo $(if $(filter $(shell uname -s),Linux),/root/,)kubectl port-forward -n $(REGISTRY_NAMESPACE) svc/registry 5000:80 &
 	@sleep 5
-	docker push $(DOCKER_REGISTRY_HOST)/$(DOCKER_REGISTRY_NAME)
+	docker push $(DOCKER_REGISTRY_HOST):5000/$(DOCKER_REGISTRY_NAME)
 	sudo kill $$(sudo pgrep kubectl)
 
 istio_injection_label: 
@@ -197,6 +197,12 @@ minikube_registry_dns_setup: minikube #install_registry
 	# REGISTRY_IP=$(REGISTRY_IP) \
 	# 	$< ssh "sudo sed 's/.*$(DOCKER_REGISTRY_HOST).*/$$REGISTRY_IP $(DOCKER_REGISTRY_HOST)/' -i /etc/hosts"
 
+create_daemon_file: REGISTRY_IP=$$(kubectl get svc/registry -n $(REGISTRY_NAMESPACE) -o json | jq -r '.spec.clusterIP')
+create_daemon_file: minikube
+	$< ssh "sudo printf '{\n\t\"insecure-registries\":[\n\t\t\"$(REGISTRY_IP)\"\n\t]\n}\n\n' | sudo tee -a /etc/docker/daemon.json"
+	$< ssh "sudo cat /etc/docker/daemon.json"
+	$< ssh "sudo systemctl restart docker"
+
 #backend_apply: istio_injection_label docker_push_backend
 backend_apply: BACKEND_SERVICE=''
 backend_apply: docker_push_backend minikube_registry_dns_setup
@@ -211,3 +217,6 @@ apply_all_backends: docker_push_backend minikube_registry_dns_setup
 	for BACKEND in 'hydrogen' 'helium' 'oxygen' 'sodium' 'chlorine' ; do \
 		$(MAKE) backend_apply BACKEND_SERVICE=$$BACKEND ; \
 	done
+
+minikube_addon_verification:
+	minikube addons list | sed 's/\s//g' | awk -F'|' '$2 == "registry" { print $4 }' | grep -q '^disabled$' && minikube addons enable registry
