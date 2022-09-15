@@ -142,33 +142,19 @@ install_istio: istioctl kubectl start_minikube k8s/istio/install-overrides.yaml
 install_istio_addons: kubectl install_istio
 	$< apply -f istio_addons/
 
-# ## install_registry | Install Docker Registry in Minikube Cluster
-# install_registry: kubectl start_minikube
-# 	$< apply -f k8s/registry/registry.yaml
-# 	@echo "Waiting for the registry to be ready..."
-# 	@while ! ($< get deploy/registry -n $(REGISTRY_NAMESPACE) -o json | jq '.status.readyReplicas == 1' | grep -q '^true$$') ; do \
-# 		echo '$< get deploy/registry -n $(REGISTRY_NAMESPACE)' ; \
-# 		$< get deploy/registry -n $(REGISTRY_NAMESPACE); \
-# 		sleep 1 ; \
-# 	done
-# 	$< get deploy/registry -n $(REGISTRY_NAMESPACE)
-# 	@echo "The registry is ready."
-
-# ## install_registry_ingress | Install Istio Ingress Configuration for Registry in the Minikube Cluster
-# install_registry_ingress: kubectl install_istio install_registry
-# 	$< apply -f k8s/registry/registry-istio-ingress.yaml
-
 ## minikube_tunnel | Forward localhost ports to minikube ingress ports, requires sudo and its own terminal
 minikube_tunnel: minikube start_minikube
 	$< tunnel
 
-#build_backend_image: install_registry_ingress
+## build_backend_image | Build the docker image required for the demo backend
 build_backend_image:
 	cd backend; $(MAKE) build_app
 
+## create_docker_tag | Tag the docker image for the demo backend to push it to the local minikube registry
 create_docker_tag: build_backend_image
 	docker tag $(DOCKER_IMAGE_NAME):latest $(DOCKER_REGISTRY_HOST):5000/$(DOCKER_REGISTRY_NAME)
 
+## root_configuration | Local DNS configuration (/etc/hosts) to push the containers to the local minikube registry
 root_configuration: create_docker_tag
 	sudo touch /etc/hosts
 	grep -q '$(DOCKER_REGISTRY_HOST)' /etc/hosts || echo '127.0.0.1 $(DOCKER_REGISTRY_HOST)' | sudo tee -a /etc/hosts
@@ -177,6 +163,7 @@ root_configuration: create_docker_tag
 	fi
 	sudo $(if $(filter $(shell uname -s),Darwin),g,)sed 's/.*$(DOCKER_REGISTRY_HOST).*/127.0.0.1 $(DOCKER_REGISTRY_HOST)/' -i /etc/hosts
 
+## docker_push_backend | Docker Push Demo Backend Container Image to minikube registry
 docker_push_backend: start_minikube root_configuration
 	@if ( [ "$$(uname -s)" = 'Darwin' ] && lsof -i :5000 ) \
 			|| ( [ "$$(uname -s)" = 'Linux' ] && sudo netstat -tupln | grep -q ':5000 ' ) \
@@ -197,17 +184,20 @@ docker_push_backend: start_minikube root_configuration
 	docker push $(DOCKER_REGISTRY_HOST):5000/$(DOCKER_REGISTRY_NAME)
 	kill $$(pgrep kubectl)
 
+## istio_injection_label | Enable Istio auto injection on the default namespace
 istio_injection_label:
 	@if !(kubectl get ns default -o json | jq '.metadata.labels."istio-injection"=="enabled"' | grep -q '^true$$') ; then \
 		kubectl label namespace default istio-injection=enabled ; \
 	fi
 
+## create_daemon_file | Create Docker Daemon File on Linux hosts
 create_daemon_file: REGISTRY_IP=$$(kubectl get svc/registry -n $(REGISTRY_NAMESPACE) -o json | jq -r '.spec.clusterIP')
 create_daemon_file: minikube
 	$< ssh "sudo printf '{\n\t\"insecure-registries\":[\n\t\t\"$(REGISTRY_IP)\"\n\t]\n}\n\n' | sudo tee -a /etc/docker/daemon.json"
 	$< ssh "sudo cat /etc/docker/daemon.json"
 	$< ssh "sudo systemctl restart docker"
 
+## backend_apply | Deploy a single backend service to minikube
 #backend_apply: istio_injection_label docker_push_backend
 backend_apply: BACKEND_SERVICE=''
 backend_apply: docker_push_backend start_minikube
@@ -217,6 +207,7 @@ backend_apply: docker_push_backend start_minikube
 		echo "BACKEND_SERVICE arg is empty please specify the backend service" ; \
 	fi
 
+## apply_all_backends | Deploy all backends to minikube
 #apply_all_backends: istio_injection_label docker_push_backend
 apply_all_backends: docker_push_backend start_minikube
 	for BACKEND in 'hydrogen' 'helium' 'oxygen' 'sodium' 'chlorine' ; do \
