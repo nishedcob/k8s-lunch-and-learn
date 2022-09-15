@@ -1,6 +1,6 @@
 
-REGISTRY_NAMESPACE=default
-DOCKER_REGISTRY_HOST=localhost
+REGISTRY_NAMESPACE=kube-system
+DOCKER_REGISTRY_HOST=registry
 DOCKER_IMAGE_NAME=istio_demo_backend
 DOCKER_REGISTRY_NAME=backend:latest
 
@@ -71,7 +71,17 @@ kubectl:
 
 ## start_minikube | create or start a local minikube cluster if one is not already running
 start_minikube: minikube kubectl
-	$< status || ($< start && $< status)
+	@if ! $< status ; then \
+		$< start ; \
+		$< status ; \
+		if [ "$$(uname -s)" = 'Darwin' ] ; then \
+			$(MAKE) gsed ; \
+		fi ; \
+		minikube addons list \
+			| $(if $(filter $(shell uname -s),Darwin),g,)sed 's/\s//g' \
+			| awk -F'|' '$$2 == "registry" { print $$4 }' \
+			| grep -q '^disabled$$' && minikube addons enable registry ; \
+	fi
 
 ## status_minikube | check the status of the local minikube cluster if one exists
 status_minikube: minikube
@@ -132,41 +142,34 @@ install_istio: istioctl kubectl start_minikube k8s/istio/install-overrides.yaml
 install_istio_addons: kubectl install_istio
 	$< apply -f istio_addons/
 
-## install_registry | Install Docker Registry in Minikube Cluster
-install_registry: kubectl start_minikube
-	$< apply -f k8s/registry/registry.yaml
-	@echo "Waiting for the registry to be ready..."
-	@while ! ($< get deploy/registry -n $(REGISTRY_NAMESPACE) -o json | jq '.status.readyReplicas == 1' | grep -q '^true$$') ; do \
-		echo '$< get deploy/registry -n $(REGISTRY_NAMESPACE)' ; \
-		$< get deploy/registry -n $(REGISTRY_NAMESPACE); \
-		sleep 1 ; \
-	done
-	$< get deploy/registry -n $(REGISTRY_NAMESPACE)
-	@echo "The registry is ready."
+# ## install_registry | Install Docker Registry in Minikube Cluster
+# install_registry: kubectl start_minikube
+# 	$< apply -f k8s/registry/registry.yaml
+# 	@echo "Waiting for the registry to be ready..."
+# 	@while ! ($< get deploy/registry -n $(REGISTRY_NAMESPACE) -o json | jq '.status.readyReplicas == 1' | grep -q '^true$$') ; do \
+# 		echo '$< get deploy/registry -n $(REGISTRY_NAMESPACE)' ; \
+# 		$< get deploy/registry -n $(REGISTRY_NAMESPACE); \
+# 		sleep 1 ; \
+# 	done
+# 	$< get deploy/registry -n $(REGISTRY_NAMESPACE)
+# 	@echo "The registry is ready."
 
-## install_registry_ingress | Install Istio Ingress Configuration for Registry in the Minikube Cluster
-install_registry_ingress: kubectl install_istio install_registry
-	$< apply -f k8s/registry/registry-istio-ingress.yaml
+# ## install_registry_ingress | Install Istio Ingress Configuration for Registry in the Minikube Cluster
+# install_registry_ingress: kubectl install_istio install_registry
+# 	$< apply -f k8s/registry/registry-istio-ingress.yaml
 
 ## minikube_tunnel | Forward localhost ports to minikube ingress ports, requires sudo and its own terminal
 minikube_tunnel: minikube start_minikube
 	$< tunnel
 
 #build_backend_image: install_registry_ingress
-build_backend_image: install_registry
+build_backend_image:
 	cd backend; $(MAKE) build_app
 
 create_docker_tag: build_backend_image
 	docker tag $(DOCKER_IMAGE_NAME):latest $(DOCKER_REGISTRY_HOST):5000/$(DOCKER_REGISTRY_NAME)
 
 root_configuration: create_docker_tag
-	@if [ "$(uname -s)" = 'Linux' ] ; then \
-		sudo mkdir -pv /root/.kube/ ; \
-		sudo cp -v $$HOME/.kube/config /root/.kube/ ; \
-		sudo cp -v $$(which kubectl) /tmp/kubectl ; \
-		sudo cp -v /tmp/kubectl /root/kubectl ; \
-		sudo chmod -v +x /root/kubectl ; \
-	fi
 	sudo touch /etc/hosts
 	grep -q '$(DOCKER_REGISTRY_HOST)' /etc/hosts || echo '127.0.0.1 $(DOCKER_REGISTRY_HOST)' | sudo tee -a /etc/hosts
 	@if [ "$$(uname -s)" = 'Darwin' ] ; then \
@@ -174,28 +177,30 @@ root_configuration: create_docker_tag
 	fi
 	sudo $(if $(filter $(shell uname -s),Darwin),g,)sed 's/.*$(DOCKER_REGISTRY_HOST).*/127.0.0.1 $(DOCKER_REGISTRY_HOST)/' -i /etc/hosts
 
-docker_push_backend: root_configuration
-	@if sudo netstat -tupln | grep -q ':80 ' ; then \
-		echo 'Please stop any applications that are listening to port 80'; \
+docker_push_backend: start_minikube root_configuration
+	@if ( [ "$$(uname -s)" = 'Darwin' ] && lsof -i :5000 ) \
+			|| ( [ "$$(uname -s)" = 'Linux' ] && sudo netstat -tupln | grep -q ':5000 ' ) \
+			; then \
+		echo 'Please stop any applications that are listening to port 5000' ; \
 		exit 1 ; \
 	fi
-	sudo $(if $(filter $(shell uname -s),Linux),/root/,)kubectl port-forward -n $(REGISTRY_NAMESPACE) svc/registry 5000:80 &
+	kubectl port-forward -n $(REGISTRY_NAMESPACE) svc/registry 5000:80 &
 	@sleep 5
+	@if [ "$$(uname -s)" = "Darwin" ] ; then \
+		mkdir -pv ~/.docker ; \
+		if [ ! -f ~/.docker/daemon.json ] ; then \
+			echo "{}" > ~/.docker/daemon.json ; \
+		fi ; \
+		jq '."insecure-registries"=["$(DOCKER_REGISTRY_HOST):5000"]' ~/.docker/daemon.json > ~/.docker/daemon.json.tmp ; \
+		mv -v ~/.docker/daemon.json.tmp ~/.docker/daemon.json ; \
+	fi
 	docker push $(DOCKER_REGISTRY_HOST):5000/$(DOCKER_REGISTRY_NAME)
-	sudo kill $$(sudo pgrep kubectl)
+	kill $$(pgrep kubectl)
 
-istio_injection_label: 
+istio_injection_label:
 	@if !(kubectl get ns default -o json | jq '.metadata.labels."istio-injection"=="enabled"' | grep -q '^true$$') ; then \
 		kubectl label namespace default istio-injection=enabled ; \
 	fi
-
-minikube_registry_dns_setup: REGISTRY_IP=$$(kubectl get svc/registry -n $(REGISTRY_NAMESPACE) -o json | jq -r '.spec.clusterIP')
-minikube_registry_dns_setup: minikube #install_registry
-	$< ssh "sudo touch /etc/hosts"
-	$< ssh "grep -q '$(DOCKER_REGISTRY_HOST)' /etc/hosts" \
-		|| $< ssh "echo $(REGISTRY_IP)' $(DOCKER_REGISTRY_HOST)' | sudo tee -a /etc/hosts"
-	# REGISTRY_IP=$(REGISTRY_IP) \
-	# 	$< ssh "sudo sed 's/.*$(DOCKER_REGISTRY_HOST).*/$$REGISTRY_IP $(DOCKER_REGISTRY_HOST)/' -i /etc/hosts"
 
 create_daemon_file: REGISTRY_IP=$$(kubectl get svc/registry -n $(REGISTRY_NAMESPACE) -o json | jq -r '.spec.clusterIP')
 create_daemon_file: minikube
@@ -205,7 +210,7 @@ create_daemon_file: minikube
 
 #backend_apply: istio_injection_label docker_push_backend
 backend_apply: BACKEND_SERVICE=''
-backend_apply: docker_push_backend minikube_registry_dns_setup
+backend_apply: docker_push_backend start_minikube
 	if [ '$(BACKEND_SERVICE)' != '' ] ; then \
 		kubectl apply -k k8s/backend/$(BACKEND_SERVICE) ; \
 	else \
@@ -213,10 +218,7 @@ backend_apply: docker_push_backend minikube_registry_dns_setup
 	fi
 
 #apply_all_backends: istio_injection_label docker_push_backend
-apply_all_backends: docker_push_backend minikube_registry_dns_setup
+apply_all_backends: docker_push_backend start_minikube
 	for BACKEND in 'hydrogen' 'helium' 'oxygen' 'sodium' 'chlorine' ; do \
 		$(MAKE) backend_apply BACKEND_SERVICE=$$BACKEND ; \
 	done
-
-minikube_addon_verification:
-	minikube addons list | sed 's/\s//g' | awk -F'|' '$2 == "registry" { print $4 }' | grep -q '^disabled$' && minikube addons enable registry
