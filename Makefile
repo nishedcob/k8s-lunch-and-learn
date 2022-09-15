@@ -1,7 +1,12 @@
 
+default: help
+
+include dependencies.mk
+
 ## help | show this help command
-help: Makefile
-	@sed -n 's/^## //p' $< | column -ts '|'
+help: SHELL=/bin/bash
+help: Makefile dependencies.mk
+	@sed -n 's/^## //p' <(cat $^) | column -ts '|'
 
 ## minikube | ensure minikube is installed in PATH
 minikube:
@@ -110,10 +115,34 @@ istioctl:
 		echo "$@ has already been installed and found in your PATH." ; \
 	fi
 
+## k8s/istio/install-overrides.yaml | Build k8s/istio/install-overrides.yaml for the current machine architecture
+k8s/istio/install-overrides.yaml:
+	cd k8s/istio ; $(MAKE) $$(basename $@)
+
 ## install_istio | Install Istio in the Minikube Cluster
-install_istio: istioctl kubectl start_minikube
-	$< install -y
+install_istio: istioctl kubectl start_minikube k8s/istio/install-overrides.yaml
+	$< install -yf k8s/istio/install-overrides.yaml
 
 ## install_istio_addons | Install recommended Istio Addons in the Minikube Cluster
 install_istio_addons: kubectl install_istio
 	$< apply -f istio_addons/
+
+## install_registry | Install Docker Registry in Minikube Cluster
+install_registry: kubectl start_minikube
+	$< apply -f k8s/registry/registry.yaml
+	@echo "Waiting for the registry to be ready..."
+	@while ! ($< get deploy/registry -n registry -o json | jq '.status.readyReplicas == 1' | grep -q '^true$$') ; do \
+		echo '$< get deploy/registry -n registry' ; \
+		$< get deploy/registry -n registry ; \
+		sleep 1 ; \
+	done
+	$< get deploy/registry -n registry
+	@echo "The registry is ready."
+
+## install_registry_ingress | Install Istio Ingress Configuration for Registry in the Minikube Cluster
+install_registry_ingress: kubectl install_istio install_registry
+	$< apply -f k8s/registry/registry-istio-ingress.yaml
+
+## minikube_tunnel | Forward localhost ports to minikube ingress ports, requires sudo and its own terminal
+minikube_tunnel: minikube start_minikube
+	$< tunnel
