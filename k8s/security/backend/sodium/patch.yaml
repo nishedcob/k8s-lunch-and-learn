@@ -1,0 +1,17 @@
+
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: backend
+spec:
+  selector:
+    matchLabels:
+      app: sodium
+  rules:
+    - from:
+      - source:
+          principals:
+            - cluster.local/ns/default/sa/sodium
+            - cluster.local/ns/default/sa/oxygen
+            - cluster.local/ns/default/sa/hydrogen
+            - cluster.local/ns/default/sa/chlorine

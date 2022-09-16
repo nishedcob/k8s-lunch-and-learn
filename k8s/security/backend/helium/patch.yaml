@@ -3,9 +3,7 @@ apiVersion: security.istio.io/v1beta1
 kind: AuthorizationPolicy
 metadata:
   name: backend
-  namespace: default
 spec:
-  action: ALLOW
   selector:
     matchLabels:
       app: helium
