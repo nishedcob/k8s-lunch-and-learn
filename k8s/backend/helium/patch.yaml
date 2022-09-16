@@ -1,3 +1,4 @@
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -7,6 +8,8 @@ spec:
     matchLabels:
       app: helium
   template:
+    spec:
+      serviceAccountName: helium
     metadata:
       labels:
         app: helium
