@@ -185,7 +185,7 @@ docker_push_backend: start_minikube root_configuration
 	kill $$(pgrep kubectl)
 
 ## istio_injection_label | Enable Istio auto injection on the default namespace
-istio_injection_label:
+istio_injection_label: install_istio_addons
 	@if !(kubectl get ns default -o json | jq '.metadata.labels."istio-injection"=="enabled"' | grep -q '^true$$') ; then \
 		kubectl label namespace default istio-injection=enabled ; \
 	fi
@@ -198,18 +198,17 @@ create_daemon_file: minikube
 	$< ssh "sudo systemctl restart docker"
 
 ## backend_apply | Deploy a single backend service to minikube
-#backend_apply: istio_injection_label docker_push_backend
 backend_apply: BACKEND_SERVICE=''
-backend_apply: docker_push_backend start_minikube
+backend_apply: istio_injection_label docker_push_backend
 	if [ '$(BACKEND_SERVICE)' != '' ] ; then \
 		kubectl apply -k k8s/backend/$(BACKEND_SERVICE) ; \
 	else \
 		echo "BACKEND_SERVICE arg is empty please specify the backend service" ; \
+		exit 1 ; \
 	fi
 
 ## apply_all_backends | Deploy all backends to minikube
-#apply_all_backends: istio_injection_label docker_push_backend
-apply_all_backends: docker_push_backend start_minikube
+apply_all_backends: istio_injection_label docker_push_backend
 	for BACKEND in 'hydrogen' 'helium' 'oxygen' 'sodium' 'chlorine' ; do \
 		$(MAKE) backend_apply BACKEND_SERVICE=$$BACKEND ; \
 	done
