@@ -1,6 +1,7 @@
 
 import os
 from fastapi import FastAPI, Response
+from json.decoder import JSONDecodeError
 from typing import Optional
 import requests
 from requests.exceptions import ConnectionError
@@ -48,6 +49,12 @@ def access(service: str, api_version: str, endpoint: str, response: Response):
             'body': {
                 'error_msg': f'Failed to connect to upstream host: {host}'
             }
+        }
+    except JSONDecodeError as jde:
+        upstream = {
+            'status_code': req.status_code,
+            'body': req.text,
+            'error': jde.msg
         }
     response.status_code = upstream.get('status_code', 500)
     return {
