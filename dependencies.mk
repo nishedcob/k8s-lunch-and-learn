@@ -28,3 +28,16 @@ kustomize:
 	else \
 		echo "$@ has already been installed and found in your PATH." ; \
 	fi
+
+## gsed | Ensure that GNU Sed is installed on OSX
+gsed:
+	@if [ "$$(uname -s)" = 'Darwin' ] ; then \
+		if [ -z "$$(which $@)" ] ; then \
+			if [ ! -z "$$(which brew)" ] ; then \
+				brew install $@ ; \
+			else \
+				echo "Please install brew before proceeding." ; \
+				exit 1 ; \
+			fi ; \
+		fi ; \
+	fi
