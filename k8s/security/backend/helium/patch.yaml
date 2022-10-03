@@ -12,3 +12,4 @@ spec:
       - source:
           principals:
             - cluster.local/ns/default/sa/helium
+            - cluster.local/ns/default/sa/frontend
