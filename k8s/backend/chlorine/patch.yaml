@@ -7,6 +7,8 @@ spec:
     matchLabels:
       app: chlorine
   template:
+    spec:
+      serviceAccountName: chlorine
     metadata:
       labels:
         app: chlorine

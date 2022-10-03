@@ -4,4 +4,4 @@ kind: IstioOperator
 metadata:
   name: istioctl-install-config
 spec:
-  hub: ghcr.io/resf/istio
+  hub: ghcr.io/resf/istio:1.14.3

@@ -1,0 +1,14 @@
+
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: backend
+spec:
+  selector:
+    matchLabels:
+      app: helium
+  rules:
+    - from:
+      - source:
+          principals:
+            - cluster.local/ns/default/sa/helium
