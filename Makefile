@@ -202,6 +202,7 @@ backend_apply: BACKEND_SERVICE=''
 backend_apply: istio_injection_label docker_push_backend
 	if [ '$(BACKEND_SERVICE)' != '' ] ; then \
 		kubectl apply -k k8s/backend/$(BACKEND_SERVICE) ; \
+		kubectl apply -k k8s/security/backend/$(BACKEND_SERVICE) ; \
 	else \
 		echo "BACKEND_SERVICE arg is empty please specify the backend service" ; \
 		exit 1 ; \
