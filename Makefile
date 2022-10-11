@@ -3,6 +3,8 @@ REGISTRY_NAMESPACE=kube-system
 DOCKER_REGISTRY_HOST=registry
 DOCKER_IMAGE_NAME=istio_demo_backend
 DOCKER_REGISTRY_NAME=backend:latest
+DOCKER_FRONTEND_IMAGE_NAME=istio_demo_frontend
+DOCKER_FRONTEND_REGISTRY_NAME=frontend:latest
 
 default: help
 
@@ -150,12 +152,17 @@ minikube_tunnel: minikube start_minikube
 build_backend_image:
 	cd backend; $(MAKE) build_app
 
-## create_docker_tag | Tag the docker image for the demo backend to push it to the local minikube registry
-create_docker_tag: build_backend_image
+## build_frontend_image | Build the docker image required for the demo frontend
+build_frontend_image:
+	cd frontend; npm run k8s-build
+
+## create_docker_tags | Tag the docker image for the demo backend to push it to the local minikube registry
+create_docker_tags: build_backend_image build_frontend_image
 	docker tag $(DOCKER_IMAGE_NAME):latest $(DOCKER_REGISTRY_HOST):5000/$(DOCKER_REGISTRY_NAME)
+	docker tag $(DOCKER_FRONTEND_IMAGE_NAME):latest $(DOCKER_REGISTRY_HOST):5000/$(DOCKER_FRONTEND_REGISTRY_NAME)
 
 ## root_configuration | Local DNS configuration (/etc/hosts) to push the containers to the local minikube registry
-root_configuration: create_docker_tag
+root_configuration: create_docker_tags
 	sudo touch /etc/hosts
 	grep -q '$(DOCKER_REGISTRY_HOST)' /etc/hosts || echo '127.0.0.1 $(DOCKER_REGISTRY_HOST)' | sudo tee -a /etc/hosts
 	@if [ "$$(uname -s)" = 'Darwin' ] ; then \
@@ -182,6 +189,32 @@ docker_push_backend: start_minikube root_configuration
 		mv -v ~/.docker/daemon.json.tmp ~/.docker/daemon.json ; \
 	fi
 	docker push $(DOCKER_REGISTRY_HOST):5000/$(DOCKER_REGISTRY_NAME)
+	kill $$(pgrep kubectl)
+
+## create a file frontend-buildtime.txt
+frontendBuildTime:
+        rm -rf frontend-buildtime.txt ; \
+        gdate --utc '+%Y%m%d%H%M%s' >> frontend-buildtime.txt ; \
+
+## docker_push_frontend | Docker Push Demo Frontend Container Image to minikube registry
+docker_push_frontend: start_minikube root_configuration
+	@if ( [ "$$(uname -s)" = 'Darwin' ] && lsof -i :5000 ) \
+			|| ( [ "$$(uname -s)" = 'Linux' ] && sudo netstat -tupln | grep -q ':5000 ' ) \
+			; then \
+		echo 'Please stop any applications that are listening to port 5000' ; \
+		exit 1 ; \
+	fi
+	kubectl port-forward -n $(REGISTRY_NAMESPACE) svc/registry 5000:80 &
+	@sleep 5
+	@if [ "$$(uname -s)" = "Darwin" ] ; then \
+		mkdir -pv ~/.docker ; \
+		if [ ! -f ~/.docker/daemon.json ] ; then \
+			echo "{}" > ~/.docker/daemon.json ; \
+		fi ; \
+		jq '."insecure-registries"=["$(DOCKER_REGISTRY_HOST):5000"]' ~/.docker/daemon.json > ~/.docker/daemon.json.tmp ; \
+		mv -v ~/.docker/daemon.json.tmp ~/.docker/daemon.json ; \
+	fi
+	docker push $(DOCKER_REGISTRY_HOST):5000/$(DOCKER_FRONTEND_REGISTRY_NAME)
 	kill $$(pgrep kubectl)
 
 ## istio_injection_label | Enable Istio auto injection on the default namespace
@@ -213,3 +246,7 @@ apply_all_backends: istio_injection_label docker_push_backend
 	for BACKEND in 'hydrogen' 'helium' 'oxygen' 'sodium' 'chlorine' ; do \
 		$(MAKE) backend_apply BACKEND_SERVICE=$$BACKEND ; \
 	done
+
+## frontend_apply | Deploy frontend to minikube
+frontend_apply: apply_all_backends docker_push_frontend
+	kubectl apply -f k8s/frontend
